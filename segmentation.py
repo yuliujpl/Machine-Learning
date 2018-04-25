@@ -87,7 +87,7 @@ def plot_3d(image, label, threshold=-300):
     # so the head of the patient would be at the top facing the camera
     print ("Small")
     p = image.transpose(2,1,0)
-    p = measure.block_reduce(p,(3,3,3), func=np.mean)
+    p = measure.block_reduce(p,(3,3,3), func=np.max)
     print ("Med")
     verts, faces, _, _ = measure.marching_cubes(p, threshold)
 
