@@ -24,17 +24,8 @@ import warnings
 from multiprocessing import Pool, cpu_count
 from functools import partial
 
-
 data_path = sys.argv[1]
-PATH = sys.argv[1]
-output_path = working_path = sys.argv[2]
-
-#get_ipython().magic('matplotlib inline')
-
-
-# Print out the first 5 file names to verify we're in the right folder.
-
-
+n_worker = sys.argv[2]
 
 def load_scan(path):
     slices = [dicom.read_file(path + '/' + s) for s in os.listdir(path)]
@@ -185,7 +176,7 @@ def binarize_per_slice(image, spacing, intensity_th=-600, sigma=1, area_th=30, e
 
 
 
-def all_slice_analysis(bw, spacing, cut_num=0, vol_limit=[0.68, 8.2], area_th=6e3, dist_th=62):
+def all_slice_analysis(bw, spacing, cut_num=0, vol_limit=[0.68, 8.2], area_th=6e3, dist_th=40):
     # in some cases, several top layers need to be removed first
     if cut_num > 0:
         bw0 = np.copy(bw)
@@ -363,23 +354,20 @@ def two_lung_only(bw, spacing, max_iter=22, max_ratio=4.8):
 
     return bw1, bw2, bw
 def step1_python(case_path, prep_folder):
-    print ("Step1 Start")
+    print ("Step1 Start...")
     case = load_scan(case_path)
-    print ("Loaded")
+    print ("Loaded...")
     case_pixels, spacing = get_pixels_hu(case)
-    print ("Hu pixels")
+    print ("Hu pixels...")
     plot_3d(case_pixels, os.path.join(prep_folder,"1_patient_structure.png"), 400)
     bw = binarize_per_slice(case_pixels, spacing)
-    print ("BW")
-    #print (bw.astype(int))
-    #print (bw)
     plot_3d(bw.astype(int), os.path.join(prep_folder,"2_pre_segment.png"), 0)
-    print ("Pre")
+    print ("Pre...")
     flag = 0
     cut_num = 0
     cut_step = 2
     bw0 = np.copy(bw)
-    print("step1")
+    print("step1...")
     while flag == 0 and cut_num < bw.shape[0]:
         bw = np.copy(bw0)
         bw, flag = all_slice_analysis(bw, spacing, cut_num=cut_num, vol_limit=[0.68,7.5])
@@ -387,8 +375,6 @@ def step1_python(case_path, prep_folder):
 
     bw = fill_hole(bw)
     bw1, bw2, bw = two_lung_only(bw, spacing)
-    print (bw1)
-    print (bw2)
     plot_3d(bw1 | bw2, os.path.join(prep_folder,"3_post_segment.png"), 0)
     return case_pixels, bw1, bw2, spacing
 def lumTrans(img):
@@ -419,17 +405,23 @@ def resample(imgs, spacing, new_spacing,order = 2):
     else:
         raise ValueError('wrong shape')
         
-def savenpy(id,filelist,prep_folder,data_path,use_existing=True):      
+def savenpy(id,filelist,data_path,use_existing=True):      
     print("Starting {}".format(id))
     resolution = np.array([1,1,1])
     name = filelist[id]
+
+    prep_folder = os.path.join(data_path,name,"segmented")
+    if not os.path.exists(prep_folder):
+        os.makedirs(prep_folder)
+
     if use_existing:
         if os.path.exists(os.path.join(prep_folder,name+'_label.npy')) and os.path.exists(os.path.join(prep_folder,name+'_clean.npy')):
             print(name+' had been done')
             return
     try:
-        print("Running")
-        im, m1, m2, spacing = step1_python(os.path.join(data_path,name), prep_folder)
+        print("Running...")
+        print(os.path.join(data_path,name,"1"))
+        im, m1, m2, spacing = step1_python(os.path.join(data_path,name,"1"), prep_folder)
         Mask = m1+m2
         
         print("New shape")
@@ -468,43 +460,28 @@ def savenpy(id,filelist,prep_folder,data_path,use_existing=True):
         sliceim = sliceim2[np.newaxis,...]
         np.save(os.path.join(prep_folder,name+'_clean'),sliceim)
         np.save(os.path.join(prep_folder,name+'_label'),np.array([[0,0,0,0]]))
-    except:
+    except Exception as e:
+        print (e)
         print('bug in '+name)
         raise
     print(name+' done')
 
-def full_prep(data_path,prep_folder,n_worker = None,use_existing=True):
+def full_prep(data_path,n_worker = None,use_existing=True):
     warnings.filterwarnings("ignore")
-    if not os.path.exists(prep_folder):
-        os.mkdir(prep_folder)
-
             
-    print('starting preprocessing')
-    #pool = Pool(n_worker)
+    print('Starting preprocessing')
+    pool = Pool(n_worker)
     filelist = [f for f in os.listdir(data_path)]
-    partial_savenpy = partial(savenpy,filelist=filelist,prep_folder=prep_folder,
+    partial_savenpy = partial(savenpy,filelist=filelist,
                               data_path=data_path,use_existing=use_existing)
 
-    print ("Looping")
     N = len(filelist)
-    for idx in range(0,N):
-      partial_savenpy(idx)
-    #_=pool.map(partial_savenpy,range(N))
-    #pool.close()
-    #pool.join()
-    print('end preprocessing')
+    _=pool.map(partial_savenpy,range(N))
+    pool.close()
+    pool.join()
+    print('Segmentation Complete')
     return filelist
 
-print("FULL PREP")
-full_prep(data_path,working_path,n_worker=1)
-
-
-
-
-
-
-
-
-
-
+print("Starting Segmentation...")
+full_prep(data_path,n_worker=n_worker)
 
