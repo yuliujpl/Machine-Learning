@@ -1,4 +1,4 @@
-import os
+import os, sys
 import glob
 
 def median(lst):
@@ -24,7 +24,7 @@ def filter_outlier_dcms(patient, filelist):
 
 
 
-root_dir = "NLST_trial"
+root_dir = sys.argv[1]
 curr_patient = ""
 curr_filelist = {}
 
