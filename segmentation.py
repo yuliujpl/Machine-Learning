@@ -25,7 +25,7 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 
 data_path = sys.argv[1]
-n_worker = sys.argv[2]
+out_path = sys.argv[2]
 
 def load_scan(path):
     slices = [dicom.read_file(path + '/' + s) for s in os.listdir(path)]
@@ -76,70 +76,29 @@ def plot_3d(image, label, threshold=-300):
     
     # Position the scan upright, 
     # so the head of the patient would be at the top facing the camera
-    print ("Small")
     p = image.transpose(2,1,0)
     p = measure.block_reduce(p,(3,3,3), func=np.max)
-    print ("Med")
     verts, faces, _, _ = measure.marching_cubes(p, threshold)
 
-    print ("Large")
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
 
     # Fancy indexing: `verts[faces]` to generate a collection of triangles
-    print ("Super")
     mesh = Poly3DCollection(verts[faces], alpha=0.70)
-    print ("Super2")
     face_color = [0.45, 0.45, 0.75]
     mesh.set_facecolor(face_color)
-    print ("Super3")
     ax.add_collection3d(mesh)
 
-    print ("Super4")
     ax.set_xlim(0, p.shape[0])
     ax.set_ylim(0, p.shape[1])
     ax.set_zlim(0, p.shape[2])
 
-    print ("Yeah")
     plt.savefig(label, bbox_inches='tight')
-    
-#plot_3d(patient_0_image, 400)
-
-
-
-
-#bw = np.zeros(patient_0_image.shape, dtype=bool)
-#plt.imshow(patient_0_image[0], cmap=plt.cm.gray) #show slices with background blacked out
-#grid_axis = np.linspace(-image_size/2 + 0.5 , image_size/2. - 0.5, image_size)
-#x, y = np.meshgrid(grid_axis, grid_axis)
-#d = (x**2 + y**2)**0.5
-#nan_mask = (d < image_size/2).astype(float)
-#nan_mask[nan_mask == 0] = np.nan
-#plt.imshow(patient_0_image[300], cmap=plt.cm.gray) #show image before gaussian filter to remove noise
-#plt.imshow(scipy.ndimage.filters.gaussian_filter(patient_0_image[300], sigma=1, truncate=2.0), cmap=plt.cm.gray) #show image after gaussian filter to remove noise
-
-#if len(np.unique(patient_0_image[300,:10,:10])) == 1:
-#    current_bw = scipy.ndimage.filters.gaussian_filter(np.multiply(patient_0_image[300],nan_mask), sigma=1, truncate=2.0) < -600
-#else:
-#    current_bw = scipy.ndimage.filters.gaussian_filter(patient_0_image[300], sigma=1, truncate=2.0) < -600
-#plt.imshow(current_bw.astype(float), cmap=plt.cm.gray) #generate mask for a slice
-
-#label = measure.label(current_bw)
-#plt.imshow(label, cmap=plt.cm.gray)
-
-#properties = measure.regionprops(label)
-#valid_label = set()
-#for prop in properties:
-#    if prop.area * spacing[1]*spacing[2] > 30 and prop.eccentricity < 0.99:
-#        valid_label.add(prop.label)
-        
-#current_bw = np.in1d(label, list(valid_label)).reshape(label.shape)
-#plt.imshow(current_bw, cmap=plt.cm.gray)
 
 def binarize_per_slice(image, spacing, intensity_th=-600, sigma=1, area_th=30, eccen_th=0.99, bg_patch_size=10):
     bw = np.zeros(image.shape, dtype=bool)
-    
-    # prepare a mask, with all corner values set to nan
+
+# prepare a mask, with all corner values set to nan
     image_size = image.shape[1]
     grid_axis = np.linspace(-image_size/2+0.5, image_size/2-0.5, image_size)
     x, y = np.meshgrid(grid_axis, grid_axis)
@@ -165,15 +124,6 @@ def binarize_per_slice(image, spacing, intensity_th=-600, sigma=1, area_th=30, e
         
     return bw
     
-#patient_0_binary_image = binarize_per_slice(patient_0_image, spacing)
-#plot_3d(patient_0_binary_image.astype(int), threshold=0)
-
-    
-#image_size = patient_0_image.shape[1]
-#image_size
-#plt.imshow(nan_mask, cmap=plt.cm.gray) #check distance from origin
-
-
 
 
 def all_slice_analysis(bw, spacing, cut_num=0, vol_limit=[0.68, 8.2], area_th=6e3, dist_th=40):
@@ -242,22 +192,6 @@ def all_slice_analysis(bw, spacing, cut_num=0, vol_limit=[0.68, 8.2], area_th=6e
         bw = np.in1d(label3, list(valid_l3)).reshape(label3.shape)
     
     return bw, len(valid_label)
-
-#bw = patient_0_binary_image
-#flag = 0
-#cut_num = 0
-#cut_step = 2
-#bw0 = np.copy(bw)
-#while flag == 0 and cut_num < bw.shape[0]:
-#    print(cut_num)
-#    bw = np.copy(bw0)
-#    bw, flag = all_slice_analysis(bw, spacing, cut_num=cut_num, vol_limit=[0.68,7.5])
-#    cut_num = cut_num + cut_step
-    
-#plot_3d(bw.astype(int), 0) #Plut trimed lung
-
-
-
 
 
 def fill_hole(bw):
@@ -353,15 +287,15 @@ def two_lung_only(bw, spacing, max_iter=22, max_ratio=4.8):
     bw = bw1 | bw2
 
     return bw1, bw2, bw
-def step1_python(case_path, prep_folder):
+def step1_python(case_path, prep_folder, name):
     print ("Step1 Start...")
     case = load_scan(case_path)
     print ("Loaded...")
     case_pixels, spacing = get_pixels_hu(case)
     print ("Hu pixels...")
-    plot_3d(case_pixels, os.path.join(prep_folder,"1_patient_structure.png"), 400)
+    plot_3d(case_pixels, os.path.join(prep_folder,name+"_1_patient_structure.png"), 400)
     bw = binarize_per_slice(case_pixels, spacing)
-    plot_3d(bw.astype(int), os.path.join(prep_folder,"2_pre_segment.png"), 0)
+    plot_3d(bw.astype(int), os.path.join(prep_folder,name+"_2_pre_segment.png"), 0)
     print ("Pre...")
     flag = 0
     cut_num = 0
@@ -375,7 +309,7 @@ def step1_python(case_path, prep_folder):
 
     bw = fill_hole(bw)
     bw1, bw2, bw = two_lung_only(bw, spacing)
-    plot_3d(bw1 | bw2, os.path.join(prep_folder,"3_post_segment.png"), 0)
+    plot_3d(bw1 | bw2, os.path.join(prep_folder,name+"_3_post_segment.png"), 0)
     return case_pixels, bw1, bw2, spacing
 def lumTrans(img):
     lungwin = np.array([-1200.,600.])
@@ -405,14 +339,11 @@ def resample(imgs, spacing, new_spacing,order = 2):
     else:
         raise ValueError('wrong shape')
         
-def savenpy(id,filelist,data_path,use_existing=True):      
-    print("Starting {}".format(id))
+def savenpy(id,data_path,prep_folder, use_existing=True):      
     resolution = np.array([1,1,1])
-    name = filelist[id]
-
-    prep_folder = os.path.join(data_path,name,"segmented")
-    if not os.path.exists(prep_folder):
-        os.makedirs(prep_folder)
+    name = os.path.basename(data_path)
+    print("Starting {}".format(name))
+    
 
     if use_existing:
         if os.path.exists(os.path.join(prep_folder,name+'_label.npy')) and os.path.exists(os.path.join(prep_folder,name+'_clean.npy')):
@@ -420,8 +351,8 @@ def savenpy(id,filelist,data_path,use_existing=True):
             return
     try:
         print("Running...")
-        print(os.path.join(data_path,name,"1"))
-        im, m1, m2, spacing = step1_python(os.path.join(data_path,name,"1"), prep_folder)
+        print(os.path.join(data_path,"1"))
+        im, m1, m2, spacing = step1_python(os.path.join(data_path,"1"), prep_folder, name)
         Mask = m1+m2
         
         print("New shape")
@@ -449,14 +380,14 @@ def savenpy(id,filelist,data_path,use_existing=True):
         sliceim = lumTrans(im)
         sliceim = sliceim*dilatedMask+pad_value*(1-dilatedMask).astype('uint8')
         bones = sliceim*extramask>bone_thresh
-        plot_3d(bones.astype(int), os.path.join(prep_folder,"4_bones_only.png"), 0)
+        plot_3d(bones.astype(int), os.path.join(prep_folder,name+"_4_bones_only.png"), 0)
         sliceim[bones] = pad_value
-        plot_3d((~(sliceim==pad_value)).astype(int), os.path.join(prep_folder,"5_remove_bones.png"), 0)
+        plot_3d((~(sliceim==pad_value)).astype(int), os.path.join(prep_folder,name+"_5_remove_bones.png"), 0)
         sliceim1,_ = resample(sliceim,spacing,resolution,order=1)
         sliceim2 = sliceim1[extendbox[0,0]:extendbox[0,1],
                     extendbox[1,0]:extendbox[1,1],
                     extendbox[2,0]:extendbox[2,1]]
-        plot_3d((~(sliceim2==pad_value)).astype(int), os.path.join(prep_folder,"6_final_preprocessed.png"), 0)
+        plot_3d((~(sliceim2==pad_value)).astype(int), os.path.join(prep_folder,name+"_6_final_preprocessed.png"), 0)
         sliceim = sliceim2[np.newaxis,...]
         np.save(os.path.join(prep_folder,name+'_clean'),sliceim)
         np.save(os.path.join(prep_folder,name+'_label'),np.array([[0,0,0,0]]))
@@ -466,22 +397,15 @@ def savenpy(id,filelist,data_path,use_existing=True):
         raise
     print(name+' done')
 
-def full_prep(data_path,n_worker = None,use_existing=True):
+def full_prep(data_path, out_path,use_existing=True):
     warnings.filterwarnings("ignore")
-            
     print('Starting preprocessing')
-    pool = Pool(n_worker)
-    filelist = [f for f in os.listdir(data_path)]
-    partial_savenpy = partial(savenpy,filelist=filelist,
-                              data_path=data_path,use_existing=use_existing)
-
-    N = len(filelist)
-    _=pool.map(partial_savenpy,range(N))
-    pool.close()
-    pool.join()
+    partial_savenpy = partial(savenpy,
+                              data_path=data_path,prep_folder=out_path,use_existing=use_existing)
+    partial_savenpy(0)
     print('Segmentation Complete')
     return filelist
 
 print("Starting Segmentation...")
-full_prep(data_path,n_worker=n_worker)
+full_prep(data_path, out_path)
 
