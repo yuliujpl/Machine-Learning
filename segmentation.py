@@ -126,7 +126,7 @@ def binarize_per_slice(image, spacing, intensity_th=-600, sigma=1, area_th=30, e
     
 
 
-def all_slice_analysis(bw, spacing, cut_num=0, vol_limit=[0.68, 8.2], area_th=6e3, dist_th=40):
+def all_slice_analysis(bw, spacing, cut_num=0, vol_limit=[0, 10], area_th=6e3, dist_th=40):
     # in some cases, several top layers need to be removed first
     if cut_num > 0:
         bw0 = np.copy(bw)
@@ -304,7 +304,7 @@ def step1_python(case_path, prep_folder, name):
     print("step1...")
     while flag == 0 and cut_num < bw.shape[0]:
         bw = np.copy(bw0)
-        bw, flag = all_slice_analysis(bw, spacing, cut_num=cut_num, vol_limit=[0.68,7.5])
+        bw, flag = all_slice_analysis(bw, spacing, cut_num=cut_num, vol_limit=[0,10])
         cut_num = cut_num + cut_step
 
     bw = fill_hole(bw)
@@ -404,7 +404,7 @@ def full_prep(data_path, out_path,use_existing=True):
                               data_path=data_path,prep_folder=out_path,use_existing=use_existing)
     partial_savenpy(0)
     print('Segmentation Complete')
-    return filelist
+    return "Complete!"
 
 print("Starting Segmentation...")
 full_prep(data_path, out_path)
