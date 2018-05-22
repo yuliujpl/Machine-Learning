@@ -2,7 +2,7 @@
 # coding: utf-8
 
 
-
+import glob
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 import dicom
@@ -27,9 +27,12 @@ from functools import partial
 data_path = sys.argv[1]
 out_path = sys.argv[2]
 
-def load_scan(path):
-    slices = [dicom.read_file(path + '/' + s) for s in os.listdir(path)]
+def load_scan(path, series):
+    slices = [dicom.read_file(path + '/' + s) for s in os.listdir(path) if s in series]
+    print ("Slice length: {}".format(len(slices)))
     slices.sort(key = lambda x: float(x.ImagePositionPatient[2]))
+    if len(slices) < 10:
+       return None
     if slices[0].ImagePositionPatient[2] == slices[1].ImagePositionPatient[2]:
         sec_num = 2;
         while slices[0].ImagePositionPatient[2] == slices[sec_num].ImagePositionPatient[2]:
@@ -287,9 +290,12 @@ def two_lung_only(bw, spacing, max_iter=22, max_ratio=4.8):
     bw = bw1 | bw2
 
     return bw1, bw2, bw
-def step1_python(case_path, prep_folder, name):
+def step1_python(case_path, prep_folder, name, series):
     print ("Step1 Start...")
-    case = load_scan(case_path)
+    case = load_scan(case_path, series)
+    if case is None:
+        print("Did not complete for this study, not enough dicom for this case: {}".format(series))
+        return None, None, None, None
     print ("Loaded...")
     case_pixels, spacing = get_pixels_hu(case)
     print ("Hu pixels...")
@@ -339,9 +345,9 @@ def resample(imgs, spacing, new_spacing,order = 2):
     else:
         raise ValueError('wrong shape')
         
-def savenpy(id,data_path,prep_folder, use_existing=True):      
+def savenpy(id,data_path,prep_folder, use_existing=True, series_dict={}):      
     resolution = np.array([1,1,1])
-    name = os.path.basename(data_path)
+    name = os.path.basename(data_path)+"_"+id
     print("Starting {}".format(name))
     
 
@@ -352,7 +358,9 @@ def savenpy(id,data_path,prep_folder, use_existing=True):
     try:
         print("Running...")
         print(os.path.join(data_path,"1"))
-        im, m1, m2, spacing = step1_python(os.path.join(data_path,"1"), prep_folder, name)
+        im, m1, m2, spacing = step1_python(os.path.join(data_path,"1"), prep_folder, name, series_dict[id])
+        if im is None:
+            return None
         Mask = m1+m2
         
         print("New shape")
@@ -400,9 +408,25 @@ def savenpy(id,data_path,prep_folder, use_existing=True):
 def full_prep(data_path, out_path,use_existing=True):
     warnings.filterwarnings("ignore")
     print('Starting preprocessing')
+
+    #Get series of dicom images
+    txt_files = glob.glob(os.path.join(data_path,"*.txt"))
+    series_image_dict = None
+    with open(txt_files[0]) as dicom_md:
+       for line in dicom_md:
+           if series_image_dict is None:
+               series_image_dict = {}
+               continue
+           line_split = line.split(" ")
+           series, image =  line_split[2], line_split[3]
+           if series not in series_image_dict.keys():
+              series_image_dict[series] = []
+           series_image_dict[series].append(os.path.basename(image).strip())
+    print ("Starting off series: {}".format(str(series_image_dict)))
     partial_savenpy = partial(savenpy,
-                              data_path=data_path,prep_folder=out_path,use_existing=use_existing)
-    partial_savenpy(0)
+                              data_path=data_path,prep_folder=out_path,use_existing=use_existing, series_dict=series_image_dict)
+    for series in series_image_dict.keys():
+        partial_savenpy(series)
     print('Segmentation Complete')
     return "Complete!"
 
